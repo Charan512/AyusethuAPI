@@ -1,0 +1,30 @@
+{
+  "name": "ayusethu-api",
+  "version": "1.0.0",
+  "description": "AyuSethu – Dual-Blockchain Medicinal Plant Supply Chain API",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "keywords": [
+    "ayusethu",
+    "supply-chain",
+    "blockchain",
+    "ayurvedic"
+  ],
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.13.6",
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "form-data": "^4.0.5",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.3.1",
+    "multer": "^2.1.1",
+    "qrcode": "^1.5.4"
+  }
+}
