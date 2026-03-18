@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: ayusethu-api
+    runtime: node
+    region: oregon
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20.11.0
+      - key: ML_SERVICE_URL
+        sync: false
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: PINATA_API_KEY
+        sync: false
+      - key: PINATA_SECRET_KEY
+        sync: false
+      - key: PINATA_JWT
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: BHASHINI_USER_ID
+        sync: false
+      - key: BHASHINI_UDYAT_KEY
+        sync: false
+      - key: BHASHINI_INFERENCE_API_KEY
+        sync: false
