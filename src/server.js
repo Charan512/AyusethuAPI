@@ -2,6 +2,8 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import connectDB from './config/db.js';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
 
 // ── Route imports ────────────────────────────────────
 import authRoutes from './routes/authRoutes.js';
@@ -15,6 +17,7 @@ import consumerRoutes from './routes/consumerRoutes.js';
 // ── App init ─────────────────────────────────────────
 const app = express();
 const PORT = process.env.PORT || 5000;
+const httpServer = createServer(app);
 
 // ── CORS ──────────────────────────────────────────
 // In production, set CORS_ORIGINS=https://your-frontend.onrender.com,https://your-ml.onrender.com
@@ -27,6 +30,23 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+const io = new Server(httpServer, {
+  cors: corsOptions
+});
+app.set('io', io);
+
+io.on('connection', (socket) => {
+  console.log('🔗 Client connected to Socket.io:', socket.id);
+  // Clients can join rooms based on their roles
+  socket.on('joinRole', (role) => {
+    socket.join(role);
+    console.log(`Socket ${socket.id} joined role room: ${role}`);
+  });
+  socket.on('disconnect', () => {
+    console.log('❌ Client disconnected:', socket.id);
+  });
+});
 
 // ── Health check ─────────────────────────────────────
 app.get('/', (_req, res) => {
@@ -61,8 +81,8 @@ app.use((err, _req, res, _next) => {
 // ── Start server ─────────────────────────────────────
 const startServer = async () => {
   await connectDB();
-  app.listen(PORT, () => {
-    console.log(`🚀 AyuSethu API running on http://localhost:${PORT}`);
+  httpServer.listen(PORT, () => {
+    console.log(`🚀 AyuSethu API & WebSockets running on http://localhost:${PORT}`);
   });
 };
 

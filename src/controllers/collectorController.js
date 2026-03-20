@@ -1,6 +1,7 @@
 import axios from 'axios';
 import FormData from 'form-data';
 import CropBatch from '../models/CropBatch.js';
+import Notification from '../models/Notification.js';
 
 /**
  * Helper: Pin a file buffer to IPFS via Pinata
@@ -240,6 +241,19 @@ export const finalVerification = async (req, res, next) => {
     batch.status = 'HARVESTED';
     await batch.save();
 
+    // ── TRIGGER NOTIFICATION TO LAB ──────────────────
+    const alertMsg = `New Batch ${batchId} harvested and species verified. Ready for lab testing.`;
+    const notification = await Notification.create({
+      recipientRole: 'LAB',
+      message: alertMsg,
+      batchId: batch._id
+    });
+    const io = req.app.get('io');
+    if (io) {
+      io.to('LAB').emit('new_notification', notification);
+    }
+
+
     res.status(200).json({
       success: true,
       data: {
@@ -255,3 +269,27 @@ export const finalVerification = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * GET /api/v1/collector/batches
+ * Returns all active batches assigned to this collector, or available for collection.
+ */
+export const getMyBatches = async (req, res, next) => {
+  try {
+    const batches = await CropBatch.find({
+      $or: [
+        { collectorId: req.user._id },
+        { collectorId: null }
+      ],
+      status: { $nin: ['SOLD', 'LAB_TESTED', 'IN_AUCTION'] }
+    }).sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      data: batches,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

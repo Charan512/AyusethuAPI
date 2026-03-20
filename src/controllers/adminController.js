@@ -46,3 +46,33 @@ export const triggerAuction = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * GET /api/v1/admin/stats
+ * Returns global platform stats for the dashboard command center.
+ */
+export const getStats = async (req, res, next) => {
+  try {
+    // We need to import User but rather than standard refactor, let's lazy load it or use mongoose.model
+    const mongoose = (await import('mongoose')).default;
+    const User = mongoose.model('User');
+    
+    const farmersCount = await User.countDocuments({ role: 'FARMER' });
+    const collectorsCount = await User.countDocuments({ role: 'COLLECTOR' });
+    const labsCount = await User.countDocuments({ role: 'LAB' });
+
+    const activeBatchesCount = await CropBatch.countDocuments({ status: { $nin: ['SOLD', 'LAB_TESTED'] } });
+    const verifiedBatchesCount = await CropBatch.countDocuments({ status: { $in: ['LAB_TESTED', 'IN_AUCTION'] } });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        users: { farmers: farmersCount, collectors: collectorsCount, labs: labsCount },
+        batches: { active: activeBatchesCount, verified: verifiedBatchesCount }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

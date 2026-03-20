@@ -41,6 +41,27 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    // ── Farmer-specific fields (Gemini chatbot) ──────
+    chatHistory: {
+      type: [
+        {
+          role: { type: String, enum: ['user', 'model'] },
+          parts: [{ text: { type: String } }],
+        },
+      ],
+      default: [],
+    },
+    farmerProfile: {
+      farmSize: String,
+      location: String,
+      soilType: String,
+      irrigationType: String,
+      crops: [String],
+    },
+    isOnboardingComplete: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );

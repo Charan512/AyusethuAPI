@@ -22,11 +22,13 @@ export const register = async (req, res, next) => {
     }
 
     // Check for existing user
-    const existing = await User.findOne({ phone });
+    const existing = await User.findOne({
+      $or: [{ phone }, { email: email ? email.toLowerCase() : 'INVALID_EMAIL_SKIP' }]
+    });
     if (existing) {
       return res
         .status(409)
-        .json({ success: false, error: 'Phone number already registered' });
+        .json({ success: false, error: 'Phone number or Email already registered' });
     }
 
     const salt = await bcrypt.genSalt(12);
@@ -66,16 +68,17 @@ export const register = async (req, res, next) => {
  */
 export const login = async (req, res, next) => {
   try {
-    const { phone, password } = req.body;
+    const { phone, email, password } = req.body;
 
-    if (!phone || !password) {
+    if (!password || (!phone && !email)) {
       return res.status(400).json({
         success: false,
-        error: 'Please provide phone and password',
+        error: 'Please provide email/phone and password',
       });
     }
 
-    const user = await User.findOne({ phone });
+    const query = email ? { email: email.toLowerCase() } : { phone };
+    const user = await User.findOne(query);
     if (!user) {
       return res
         .status(401)
