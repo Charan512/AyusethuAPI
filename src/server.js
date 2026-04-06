@@ -13,6 +13,7 @@ import labRoutes from './routes/labRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import manufacturerRoutes from './routes/manufacturerRoutes.js';
 import consumerRoutes from './routes/consumerRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
 
 // ── App init ─────────────────────────────────────────
 const app = express();
@@ -60,6 +61,7 @@ app.use('/api/v1/collector', collectorRoutes);
 app.use('/api/v1/lab', labRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/manufacturer', manufacturerRoutes);
+app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1', consumerRoutes);
 
 // ── 404 handler ──────────────────────────────────────
