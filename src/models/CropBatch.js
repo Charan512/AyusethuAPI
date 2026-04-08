@@ -59,6 +59,11 @@ const cropBatchSchema = new mongoose.Schema(
       irrigationType: String,
       soilType: String,
       estimatedQuantityKg: Number,
+      seedBrand: {           // R2: Stage 1 Collector field — now persisted
+        type: String,
+        trim: true,
+        default: null,
+      },
     },
     stages: {
       type: [stageSchema],
@@ -78,6 +83,7 @@ const cropBatchSchema = new mongoose.Schema(
         'INITIATED',
         'GROWING',
         'HARVESTED',
+        'ML_REVIEW_REQUIRED',   // ← ML confidence < threshold, needs Admin decision
         'IN_TRANSIT',
         'LAB_ASSIGNED',
         'LAB_TESTED',

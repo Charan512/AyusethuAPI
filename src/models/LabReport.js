@@ -13,8 +13,10 @@ const labReportSchema = new mongoose.Schema(
       required: [true, 'Lab ID is required'],
     },
     testDate: {
+      // R5 FIX: not required at schema level — enforced in submitResults controller
+      // so saveDraft can persist incomplete forms without a testDate.
       type: Date,
-      required: [true, 'Test date is required'],
+      default: null,
     },
 
     // ── Identity Tests ───────────────────────────────

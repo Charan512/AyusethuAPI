@@ -9,33 +9,49 @@ import mongoose from 'mongoose';
  * Sweeps all LAB_TESTED batches, stubs grading algorithm,
  * moves them to IN_AUCTION status.
  */
+/**
+ * @deprecated EMERGENCY USE ONLY — R3
+ * The Lab portal now auto-triggers auctions via submitResults() when a batch
+ * passes certification. This endpoint exists solely as a manual override for
+ * edge cases (e.g., Lab server crash mid-submit, orphaned LAB_TESTED batches).
+ *
+ * DO NOT call this as a primary flow. It will reject if the automated auction
+ * scheduler has already picked up any of the eligible batches.
+ *
+ * POST /api/v1/admin/auction/trigger
+ */
 export const triggerAuction = async (req, res, next) => {
   try {
-    const eligibleBatches = await CropBatch.find({ status: 'LAB_TESTED' });
+    // Only target truly orphaned batches — LAB_TESTED but not yet IN_AUCTION
+    // and without an active auction window (belt-and-suspenders safety check)
+    const eligibleBatches = await CropBatch.find({
+      status: 'LAB_TESTED',
+      auctionEndsAt: null, // skip any cron has already touched
+    });
 
     if (eligibleBatches.length === 0) {
       return res.status(200).json({
         success: true,
-        data: {
-          auctionedCount: 0,
-          message: 'No LAB_TESTED batches available for auction',
-        },
+        data: { auctionedCount: 0, message: 'No orphaned LAB_TESTED batches found. Automated trigger is handling the queue.' },
       });
     }
 
-    // ── Stubbed grading algorithm ────────────────────
-    // In production: parse LabReport chemical data to generate quality grades
-    const gradedBatches = eligibleBatches.map((batch) => ({
-      batchId: batch.batchId,
-      speciesName: batch.speciesName,
-      qualityGrade: 'Grade A', // stub — always Grade A
+    // Compute starting prices using the same grading algorithm as labController
+    const gradedBatches = await Promise.all(eligibleBatches.map(async (batch) => {
+      const labReport = await LabReport.findOne({ cropBatchId: batch._id, isDraft: false });
+      return {
+        batchId: batch.batchId,
+        speciesName: batch.speciesName,
+        startingPrice: labReport ? computeStartingPrice(labReport) : 5000,
+      };
     }));
 
-    // Move all eligible batches to IN_AUCTION
-    await CropBatch.updateMany(
-      { status: 'LAB_TESTED' },
-      { $set: { status: 'IN_AUCTION' } }
-    );
+    // Move all orphaned batches to IN_AUCTION with computed starting prices
+    await Promise.all(eligibleBatches.map(async (batch, i) => {
+      batch.status = 'IN_AUCTION';
+      batch.startingPrice = gradedBatches[i].startingPrice;
+      await batch.save();
+    }));
 
     res.status(200).json({
       success: true,
@@ -43,7 +59,7 @@ export const triggerAuction = async (req, res, next) => {
         auctionedCount: gradedBatches.length,
         gradedBatches,
         triggeredAt: new Date().toISOString(),
-        note: '[STUB] Grading algorithm returns Grade A for all. Full algorithm pending.',
+        note: '[EMERGENCY OVERRIDE] Use only when automated Lab trigger has failed.',
       },
     });
   } catch (error) {
@@ -115,12 +131,28 @@ export const getStats = async (req, res, next) => {
  * GET /api/v1/admin/harvests/pending
  * Returns all HARVESTED batches awaiting Admin review before Lab release.
  */
+/**
+ * GET /api/v1/admin/harvests/pending
+ * R1 FIX: Returns HARVESTED batches ready for Lab release AND
+ * ML_REVIEW_REQUIRED batches that need manual Admin intervention.
+ * Response includes a `mlFlagged` boolean so the UI can render
+ * a distinct warning badge for low-confidence batches.
+ */
 export const getPendingHarvests = async (req, res, next) => {
   try {
-    const batches = await CropBatch.find({ status: 'HARVESTED' })
+    const batches = await CropBatch.find({
+      status: { $in: ['HARVESTED', 'ML_REVIEW_REQUIRED'] },
+    })
       .populate('farmerId', 'name phone farmerProfile')
       .sort({ updatedAt: -1 });
-    res.status(200).json({ success: true, count: batches.length, data: batches });
+
+    // Tag each batch so the Admin UI can render appropriate action buttons
+    const tagged = batches.map(b => ({
+      ...b.toObject(),
+      mlFlagged: b.status === 'ML_REVIEW_REQUIRED',
+    }));
+
+    res.status(200).json({ success: true, count: tagged.length, data: tagged });
   } catch (error) { next(error); }
 };
 

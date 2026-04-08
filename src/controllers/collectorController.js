@@ -41,6 +41,7 @@ export const initializeBatch = async (req, res, next) => {
       irrigationType,
       soilType,
       estimatedQuantityKg,
+      seedBrand,         // R2: now captured from Stage 1 form
       geoTag,
     } = req.body;
 
@@ -66,6 +67,7 @@ export const initializeBatch = async (req, res, next) => {
         irrigationType,
         soilType,
         estimatedQuantityKg,
+        seedBrand: seedBrand || null,   // R2: persisted
       },
       stages: [
         {
@@ -223,7 +225,12 @@ export const finalVerification = async (req, res, next) => {
       });
     }
 
-    // ── 3. Update CropBatch ──────────────────────────
+    // ── 3. Confidence gate ────────────────────────────
+    // If ML confidence is too low, flag for Admin review instead of proceeding.
+    const ML_CONFIDENCE_THRESHOLD = 0.65;
+    const confidenceScore = mlResult.rawConfidenceScore || 0;
+    const mlPassed = confidenceScore >= ML_CONFIDENCE_THRESHOLD;
+
     batch.stages.push({
       stageNumber: 5,
       status: 'COMPLETED',
@@ -238,22 +245,25 @@ export const finalVerification = async (req, res, next) => {
       rawConfidenceScore: mlResult.rawConfidenceScore,
     };
 
-    batch.status = 'HARVESTED';
+    if (mlPassed) {
+      batch.status = 'HARVESTED';
+    } else {
+      // ⚠️ Low confidence — hold for Admin decision, do NOT advance to HARVESTED
+      batch.status = 'ML_REVIEW_REQUIRED';
+    }
     await batch.save();
 
-    // ── TRIGGER NOTIFICATION TO ADMIN (not Lab directly) ──
-    // Admin must review and release to the Lab queue.
-    const alertMsg = `Batch ${batchId} (${batch.speciesName}) has been harvested and ML-verified by the Collector. Awaiting your approval to release for Lab testing.`;
-    const notification = await Notification.create({
-      recipientRole: 'ADMIN',
-      message: alertMsg,
-      batchId: batch._id
-    });
+    // ── 4. Notify Admin ───────────────────────────────
     const io = req.app.get('io');
-    if (io) {
-      io.to('ADMIN').emit('new_notification', notification);
+    if (mlPassed) {
+      const alertMsg = `Batch ${batchId} (${batch.speciesName}) harvested & ML-verified (${(confidenceScore * 100).toFixed(1)}% confidence). Awaiting Admin approval for Lab release.`;
+      const notification = await Notification.create({ recipientRole: 'ADMIN', message: alertMsg, batchId: batch._id });
+      if (io) io.to('ADMIN').emit('new_notification', notification);
+    } else {
+      const alertMsg = `⚠️ Batch ${batchId} ML confidence too low (${(confidenceScore * 100).toFixed(1)}%). Identified as "${mlResult.verifiedSpecies}" — MANUAL ADMIN REVIEW REQUIRED before Lab release.`;
+      const notification = await Notification.create({ recipientRole: 'ADMIN', message: alertMsg, batchId: batch._id });
+      if (io) io.to('ADMIN').emit('new_notification', notification);
     }
-
 
 
     res.status(200).json({

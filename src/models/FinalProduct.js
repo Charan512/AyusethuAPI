@@ -17,6 +17,12 @@ const finalProductSchema = new mongoose.Schema(
       ref: 'User',
       required: [true, 'Manufacturer ID is required'],
     },
+    // ← Missing FK that completes the supply chain traceability chain
+    labReportId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'LabReport',
+      default: null,
+    },
 
     // ── Product Declaration Fields ────────────────────
     productName: {

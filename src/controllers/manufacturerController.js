@@ -256,10 +256,14 @@ export const finalizeAuction = async (req, res, next) => {
       color: { dark: '#000000', light: '#ffffff' },
     });
 
+    // Resolve the LabReport FK for full traceability chain
+    const labReportDoc = await LabReport.findOne({ cropBatchId: batch._id, isDraft: false });
+
     const finalProduct = await FinalProduct.create({
       finalBatchId,
       cropBatchId: batch._id,
       manufacturerId: req.user._id,
+      labReportId: labReportDoc?._id || null,
       productName,
       productType,
       composition,

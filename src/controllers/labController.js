@@ -144,6 +144,17 @@ export const submitResults = async (req, res, next) => {
     }
 
     const b = req.body;
+
+    // R5: Enforce required final-submission fields at the controller level
+    // (testDate is no longer required: true in the schema so saveDraft can persist
+    //  incomplete forms, but submitResults requires both to produce a valid certificate)
+    if (!b.testDate) {
+      return res.status(400).json({ success: false, error: 'testDate is required to submit final results.' });
+    }
+    if (!b.technicianName) {
+      return res.status(400).json({ success: false, error: 'technicianName is required to submit final results.' });
+    }
+
     const payload = {
       testDate: b.testDate,
       technicianName: b.technicianName,
@@ -207,15 +218,17 @@ export const submitResults = async (req, res, next) => {
 
     // Auto-auction trigger
     if (payload.finalDecision === 'PASS') {
-      batch.status = 'IN_AUCTION';
-      await batch.save();
-
       let multiplier = 1.5;
       const activeCompound = payload.phytochemical.activeCompoundPercent;
       if (activeCompound > 80) multiplier += 0.4;
       else if (activeCompound > 60) multiplier += 0.2;
       if (payload.physicochemical.moisturePercent < 10) multiplier += 0.1;
       const startingPrice = Math.round(5000 * multiplier);
+
+      // ✅ FIX: persist startingPrice to batch so auction cards can read it
+      batch.status = 'IN_AUCTION';
+      batch.startingPrice = startingPrice;
+      await batch.save();
 
       const mfgMsg = `🏆 Batch ${batchId} (${batch.speciesName}) passed Lab Certification. LIVE in Auction — Starting ₹${startingPrice.toLocaleString('en-IN')}.`;
       const mfgNotif = await Notification.create({ recipientRole: 'MANUFACTURER', message: mfgMsg, batchId: batch._id });
