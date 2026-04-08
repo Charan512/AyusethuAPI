@@ -1,66 +1,98 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import axios from 'axios';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
-const SYSTEM_INSTRUCTION = `You are the AyuSethu Farmer Assistant — a warm, professional agricultural chatbot for a medicinal plant supply chain platform.
+const SYSTEM_INSTRUCTION = `You are the AyuSethu Farmer Assistant — a warm, professional agricultural chatbot for a crop supply chain platform.
 
 TONE: Farm-friendly, supportive, concise. Use simple language. Greet warmly on first message.
 
 PHASE 1 — NEW FARMER ONBOARDING:
-If the user is new (empty chat history), gather the following information one or two questions at a time:
-1. Farm Size (e.g., "2 acres", "5 hectares")
-2. Location (village/district/state)
-3. Soil Type (e.g., laterite, alluvial, black cotton, red)
-4. Irrigation Type (e.g., rain-fed, drip, canal, borewell)
-5. What medicinal plants they grow or want to grow
+If the user is new (empty chat history), gather the following information continuously:
+1. What crops or plants they currently grow or want to grow.
+2. The estimated quantity they expect to harvest (in Kg, tons, or quintals).
 
-Be conversational. Do NOT ask all questions at once. Guide them naturally.
+Be conversational. 
 
 PHASE 2 — RETURNING FARMER:
 If the user already has profile data, help with:
 - Starting a new crop batch
 - Checking batch status
-- General farming queries about medicinal plants
+- General farming queries about crops
 
 CRITICAL RULE — DATA CAPTURE:
-Once you have ALL five pieces of information (farm size, location, soil type, irrigation, crops), end your message with EXACTLY this format:
+Once you have discovered their desired crops AND their estimated harvest quantity, end your message with EXACTLY this format:
 
 [DATA_CAPTURE_COMPLETE]
-{"farmSize":"value","location":"value","soilType":"value","irrigationType":"value","crops":["crop1","crop2"]}
+{"crops":["crop1"],"estimatedQuantityKg":500}
 
-The JSON must be valid and on a single line immediately after the marker. Do NOT include the marker until you have ALL data.`;
+The JSON must be valid and on a single line immediately after the marker. Convert tons/quintals directly into Kg integers. Do NOT include the marker until you have BOTH the crop and quantity.`;
 
 /**
- * Get a chat response from Gemini using conversation history.
- * @param {Array} history - Previous chat turns in Gemini format
+ * Get a chat response from Groq using conversation history.
+ * @param {Array} history - Previous chat turns
  * @param {string} newMessage - The user's new message
  * @param {string} [language] - Optional language code to force the response language
  * @returns {string} The model's response text
  */
 export const getChatResponse = async (history, newMessage, language = 'en') => {
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    systemInstruction: SYSTEM_INSTRUCTION,
-  });
+  const messages = [
+    { role: 'system', content: SYSTEM_INSTRUCTION }
+  ];
 
-  // Strip out Mongoose metadata like _id at both top-level and parts-level before passing to Gemini API
-  const sanitizedHistory = (history || []).map(msg => ({
-    role: msg.role === 'model' ? 'model' : 'user',
-    parts: Array.isArray(msg.parts) 
-      ? msg.parts.map(p => ({ text: p.text || '' })) 
-      : [{ text: msg.text || '' }]
-  }));
+  // Map Mongoose-style Gemini history to OpenAI/Groq array format
+  if (Array.isArray(history)) {
+    history.forEach(msg => {
+      let text = '';
+      if (Array.isArray(msg.parts)) {
+        text = msg.parts.map(p => p.text).join(' ');
+      } else {
+        text = msg.text || '';
+      }
+      messages.push({
+        role: msg.role === 'model' ? 'assistant' : 'user',
+        content: text,
+      });
+    });
+  }
 
-  const chat = model.startChat({
-    history: sanitizedHistory,
-  });
-  
-  // Force Gemini to respond in the required language
+  // Force Groq to reply entirely in the required language
   const languagePrompt = `\n\n[SYSTEM INSTRUCTION: You MUST reply entirely in the language corresponding to language code '${language}'.]`;
-  const finalMessage = newMessage + languagePrompt;
+  messages.push({
+    role: 'user',
+    content: newMessage + languagePrompt,
+  });
 
-  const result = await chat.sendMessage(finalMessage);
-  return result.response.text();
+  let responseData;
+  try {
+    const res = await axios.post(
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        model: 'llama-3.3-70b-versatile',
+        messages: messages,
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    responseData = res.data;
+  } catch (err) {
+    if (err.response && err.response.status === 503) {
+      console.warn('⚠️ Groq capacity drop. Sleeping 2s and retrying...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      const res2 = await axios.post(
+        'https://api.groq.com/openai/v1/chat/completions',
+        { model: 'llama-3.3-70b-versatile', messages },
+        { headers: { 'Authorization': `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' } }
+      );
+      responseData = res2.data;
+    } else {
+      console.error('Groq API Error:', err.response ? err.response.data : err.message);
+      throw err;
+    }
+  }
+
+  return responseData.choices[0].message.content;
 };
 
 // Alias so controller can import as handleChat or getChatResponse

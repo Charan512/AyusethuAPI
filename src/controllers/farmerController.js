@@ -3,6 +3,7 @@ import CropBatch from '../models/CropBatch.js';
 import multer from 'multer';
 import { getChatResponse } from '../services/geminiService.js';
 import { bhashiniAsr, bhashiniTts } from '../services/bhashiniService.js';
+import axios from 'axios';
 
 // ── Multer — store audio format in memory buffer ──────
 export const upload = multer({ storage: multer.memoryStorage() });
@@ -61,14 +62,10 @@ export const chat = async (req, res, next) => {
         if (jsonMatch && jsonMatch[1]) {
           onboardingData = JSON.parse(jsonMatch[1]);
 
-          // Save farmer profile
-          farmer.farmerProfile = {
-            farmSize: onboardingData.farmSize,
-            location: onboardingData.location,
-            soilType: onboardingData.soilType,
-            irrigationType: onboardingData.irrigationType,
-            crops: onboardingData.crops || [],
-          };
+          if (onboardingData.crops) {
+            farmer.farmerProfile = farmer.farmerProfile || {};
+            farmer.farmerProfile.crops = onboardingData.crops;
+          }
           farmer.isOnboardingComplete = true;
 
           // Auto-initialize Stage 1 batch for primary crop
@@ -79,9 +76,9 @@ export const chat = async (req, res, next) => {
               farmerId: farmer._id,
               speciesName: onboardingData.crops[0],
               cultivationDetails: {
-                irrigationType: onboardingData.irrigationType,
-                soilType: onboardingData.soilType,
-                estimatedQuantityKg: 0,
+                irrigationType: farmer.farmerProfile?.irrigationType || 'Unknown',
+                soilType: 'Unknown', // Soil type is not captured anymore
+                estimatedQuantityKg: onboardingData.estimatedQuantityKg || 0,
               },
               stages: [
                 {
@@ -175,7 +172,7 @@ export const getChatHistory = async (req, res, next) => {
 export const getProfile = async (req, res, next) => {
   try {
     const farmer = await User.findById(req.user._id).select(
-      'name phone preferredLanguage farmerProfile isOnboardingComplete walletAddress createdAt'
+      'name email phone preferredLanguage farmerProfile isOnboardingComplete walletAddress createdAt'
     );
     if (!farmer) {
       return res.status(404).json({ success: false, error: 'User not found' });
@@ -191,6 +188,7 @@ export const getProfile = async (req, res, next) => {
       data: {
         profile: {
           name: farmer.name,
+          email: farmer.email,
           phone: farmer.phone,
           preferredLanguage: farmer.preferredLanguage,
           walletAddress: farmer.walletAddress,
@@ -393,13 +391,33 @@ export const getDashboard = async (req, res, next) => {
       });
     });
 
-    // Seeded monthly activity (last 6 months)
-    const months = ['Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr'];
-    const monthlyData = months.map((m, i) => ({
-      month: m,
-      batchesCreated: Math.max(1, batches.length > 0 ? Math.floor(Math.random() * 5) + 1 : [2, 3, 1, 4, 2, 5][i]),
-      stagesCompleted: Math.max(1, Math.floor(Math.random() * 8) + 2),
-    }));
+    // Fetch OpenWeatherMap Weather News
+    let weatherNews = null;
+    try {
+      const { lat, lon } = req.query;
+      let weatherUrlParams = '';
+
+      if (lat && lon) {
+        weatherUrlParams = `lat=${lat}&lon=${lon}`;
+      } else {
+        const farmer = await User.findById(farmerId).select('farmerProfile');
+        const loc = farmer?.farmerProfile?.location || 'Hyderabad';
+        weatherUrlParams = `q=${loc}`;
+      }
+
+      const weatherRes = await axios.get(
+        `https://api.openweathermap.org/data/2.5/weather?${weatherUrlParams}&appid=${process.env.WEATHER_API}&units=metric`
+      );
+      weatherNews = {
+        location: weatherRes.data.name,
+        temp: weatherRes.data.main.temp,
+        description: weatherRes.data.weather[0].description,
+        humidity: weatherRes.data.main.humidity,
+        icon: weatherRes.data.weather[0].icon,
+      };
+    } catch (weatherErr) {
+      console.error('⚠️ Weather API skipped or failed:', weatherErr.message);
+    }
 
     // Crop species distribution
     const speciesCounts = {};
@@ -418,7 +436,7 @@ export const getDashboard = async (req, res, next) => {
         },
         statusDistribution: statusCounts,
         speciesDistribution: speciesCounts,
-        monthlyActivity: monthlyData,
+        weatherNews: weatherNews,
       },
     });
   } catch (error) {
