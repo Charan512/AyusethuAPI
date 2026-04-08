@@ -27,6 +27,9 @@ export const bhashiniAsr = async (audioBase64, sourceLanguage) => {
   try {
     const { callbackUrl, inferenceKey, serviceId } = await getDynamicBhashiniTokens('asr', sourceLanguage);
 
+    // Strip any generic Data URI prefix so Bhashini doesn't misidentify it as a fetch link (DHRUVA-116)
+    const cleanBase64 = audioBase64.replace(/^data:audio\/\w+;base64,/, '');
+
     const payload = {
       pipelineTasks: [{
         taskType: 'asr',
@@ -37,7 +40,7 @@ export const bhashiniAsr = async (audioBase64, sourceLanguage) => {
           samplingRate: 16000
         }
       }],
-      inputData: { audio: [{ audioContent: audioBase64 }] }
+      inputData: { audio: [{ audioContent: cleanBase64 }] }
     };
 
     const response = await axios.post(callbackUrl, payload, {
