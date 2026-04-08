@@ -1,39 +1,54 @@
 import axios from 'axios';
 
-const BHASHINI_PIPELINE_URL = 'https://dhruva-api.bhashini.gov.in/services/inference/pipeline';
+const CONFIG_URL = 'https://meity-auth.ulcacontrib.org/ulca/apis/v0/model/getModelsPipeline';
 
-/**
- * Helper to call Bhashini ASR (Speech-to-Text)
- * @param {string} audioBase64 - Base64 encoded audio
- * @param {string} sourceLanguage - e.g., 'te', 'hi', 'en'
- * @returns {string} - The transcribed text
- */
+async function getDynamicBhashiniTokens(taskType, sourceLanguage) {
+  const payload = {
+    pipelineTasks: [{ taskType, config: { language: { sourceLanguage } } }],
+    pipelineRequestConfig: { pipelineId: "64392f96daac500b55c543cd" }
+  };
+  const response = await axios.post(CONFIG_URL, payload, {
+    headers: {
+      userID: process.env.BHASHINI_USER_ID,
+      ulcaApiKey: process.env.BHASHINI_UDYAT_KEY,
+      'Content-Type': 'application/json'
+    }
+  });
+  
+  const endpointObj = response.data.pipelineInferenceAPIEndPoint;
+  return {
+    callbackUrl: endpointObj.callbackUrl,
+    inferenceKey: endpointObj.inferenceApiKey.value,
+    serviceId: response.data.pipelineResponseConfig[0].config[0].serviceId
+  };
+}
+
 export const bhashiniAsr = async (audioBase64, sourceLanguage) => {
   try {
-    const response = await axios.post(
-      BHASHINI_PIPELINE_URL,
-      {
-        pipelineTasks: [
-          {
-            taskType: 'asr',
-            config: {
-              language: { sourceLanguage }
-            }
-          }
-        ],
-        inputData: { audio: [{ audioContent: audioBase64 }] }
-      },
-      {
-        headers: {
-          Authorization: process.env.BHASHINI_INFERENCE_API_KEY,
-          'Content-Type': 'application/json'
+    const { callbackUrl, inferenceKey, serviceId } = await getDynamicBhashiniTokens('asr', sourceLanguage);
+
+    const payload = {
+      pipelineTasks: [{
+        taskType: 'asr',
+        config: {
+          language: { sourceLanguage },
+          serviceId: serviceId,
+          audioFormat: 'wav',
+          samplingRate: 16000
         }
+      }],
+      inputData: { audio: [{ audioContent: audioBase64 }] }
+    };
+
+    const response = await axios.post(callbackUrl, payload, {
+      headers: {
+        Authorization: inferenceKey,
+        'Content-Type': 'application/json'
       }
-    );
+    });
 
     const asrOutput = response.data?.pipelineResponse?.[0]?.output?.[0]?.source;
     if (!asrOutput) throw new Error("Invalid ASR payload returned");
-    
     return asrOutput;
   } catch (error) {
     console.error('❌ Bhashini ASR Error:', error.response?.data || error.message);
@@ -41,38 +56,31 @@ export const bhashiniAsr = async (audioBase64, sourceLanguage) => {
   }
 };
 
-/**
- * Helper to call Bhashini TTS (Text-to-Speech)
- * @param {string} text - The text to synthesize
- * @param {string} targetLanguage - e.g., 'te', 'hi', 'en'
- * @returns {string} - Base64 encoded audio of the spoken text
- */
 export const bhashiniTts = async (text, targetLanguage) => {
   try {
-    const response = await axios.post(
-      BHASHINI_PIPELINE_URL,
-      {
-        pipelineTasks: [
-          {
-            taskType: 'tts',
-            config: {
-              language: { sourceLanguage: targetLanguage }
-            }
-          }
-        ],
-        inputData: { input: [{ source: text }] }
-      },
-      {
-        headers: {
-          Authorization: process.env.BHASHINI_INFERENCE_API_KEY,
-          'Content-Type': 'application/json'
+    const { callbackUrl, inferenceKey, serviceId } = await getDynamicBhashiniTokens('tts', targetLanguage);
+
+    const payload = {
+      pipelineTasks: [{
+        taskType: 'tts',
+        config: {
+          language: { sourceLanguage: targetLanguage },
+          serviceId: serviceId,
+          gender: "female"
         }
+      }],
+      inputData: { input: [{ source: text }] }
+    };
+
+    const response = await axios.post(callbackUrl, payload, {
+      headers: {
+        Authorization: inferenceKey,
+        'Content-Type': 'application/json'
       }
-    );
+    });
 
     const audioOutput = response.data?.pipelineResponse?.[0]?.audio?.[0]?.audioContent;
     if (!audioOutput) throw new Error("Invalid TTS payload returned");
-    
     return audioOutput;
   } catch (error) {
     console.error('❌ Bhashini TTS Error:', error.response?.data || error.message);

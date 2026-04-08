@@ -43,8 +43,14 @@ export const getChatResponse = async (history, newMessage, language = 'en') => {
     systemInstruction: SYSTEM_INSTRUCTION,
   });
 
+  // Strip out Mongoose metadata like _id before passing to Gemini API
+  const sanitizedHistory = (history || []).map(msg => ({
+    role: msg.role === 'model' ? 'model' : 'user',
+    parts: Array.isArray(msg.parts) ? msg.parts : [{ text: msg.text || '' }]
+  }));
+
   const chat = model.startChat({
-    history: history || [],
+    history: sanitizedHistory,
   });
   
   // Force Gemini to respond in the required language
