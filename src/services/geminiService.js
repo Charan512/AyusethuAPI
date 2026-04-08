@@ -43,10 +43,12 @@ export const getChatResponse = async (history, newMessage, language = 'en') => {
     systemInstruction: SYSTEM_INSTRUCTION,
   });
 
-  // Strip out Mongoose metadata like _id before passing to Gemini API
+  // Strip out Mongoose metadata like _id at both top-level and parts-level before passing to Gemini API
   const sanitizedHistory = (history || []).map(msg => ({
     role: msg.role === 'model' ? 'model' : 'user',
-    parts: Array.isArray(msg.parts) ? msg.parts : [{ text: msg.text || '' }]
+    parts: Array.isArray(msg.parts) 
+      ? msg.parts.map(p => ({ text: p.text || '' })) 
+      : [{ text: msg.text || '' }]
   }));
 
   const chat = model.startChat({
