@@ -1,12 +1,24 @@
 import { Router } from 'express';
-import multer from 'multer';
 import { protect, authorize } from '../middlewares/authMiddleware.js';
-import { acceptBatch, submitResults } from '../controllers/labController.js';
+import {
+  getAvailableSamples,
+  getMyAssignedBatch,
+  acceptBatch,
+  saveDraft,
+  submitResults,
+} from '../controllers/labController.js';
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage() });
 
+// Job Board
+router.get('/samples/available', protect, authorize('LAB'), getAvailableSamples);
+router.get('/samples/mine',      protect, authorize('LAB'), getMyAssignedBatch);
+
+// Claim
 router.post('/accept', protect, authorize('LAB'), acceptBatch);
-router.post('/batch/:batchId/results', protect, authorize('LAB'), upload.single('pdfReport'), submitResults);
+
+// Entry form
+router.put('/batch/:batchId/save',   protect, authorize('LAB'), saveDraft);
+router.post('/batch/:batchId/submit', protect, authorize('LAB'), submitResults);
 
 export default router;

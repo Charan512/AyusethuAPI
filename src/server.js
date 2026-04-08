@@ -4,8 +4,9 @@ import cors from 'cors';
 import connectDB from './config/db.js';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import { startAuctionScheduler } from './services/auctionScheduler.js';
 
-// ── Route imports ────────────────────────────────────
+// ── Route imports ─────────────────────────────────────────────────────────────
 import authRoutes from './routes/authRoutes.js';
 import farmerRoutes from './routes/farmerRoutes.js';
 import collectorRoutes from './routes/collectorRoutes.js';
@@ -15,13 +16,12 @@ import manufacturerRoutes from './routes/manufacturerRoutes.js';
 import consumerRoutes from './routes/consumerRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 
-// ── App init ─────────────────────────────────────────
+// ── App init ──────────────────────────────────────────────────────────────────
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 const httpServer = createServer(app);
 
-// ── CORS ──────────────────────────────────────────
-// In production, set CORS_ORIGINS=https://your-frontend.onrender.com,https://your-ml.onrender.com
+// ── CORS ──────────────────────────────────────────────────────────────────────
 const corsOptions = {
   origin: process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',').map((s) => s.trim())
@@ -32,29 +32,31 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-const io = new Server(httpServer, {
-  cors: corsOptions
-});
+// ── Socket.io ─────────────────────────────────────────────────────────────────
+const io = new Server(httpServer, { cors: corsOptions });
 app.set('io', io);
 
 io.on('connection', (socket) => {
-  console.log('🔗 Client connected to Socket.io:', socket.id);
-  // Clients can join rooms based on their roles
+  console.log('🔗 Socket connected:', socket.id);
+
+  // Role-based rooms (MANUFACTURER, ADMIN, LAB, etc.)
   socket.on('joinRole', (role) => {
     socket.join(role);
     console.log(`Socket ${socket.id} joined role room: ${role}`);
   });
-  socket.on('disconnect', () => {
-    console.log('❌ Client disconnected:', socket.id);
+
+  // Batch-specific room for granular bid updates
+  socket.on('joinBatch', (batchId) => {
+    socket.join(`batch_${batchId}`);
   });
+
+  socket.on('disconnect', () => console.log('❌ Socket disconnected:', socket.id));
 });
 
-// ── Health check ─────────────────────────────────────
-app.get('/', (_req, res) => {
-  res.json({ success: true, message: 'AyuSethu API is running 🌿' });
-});
+// ── Health check ──────────────────────────────────────────────────────────────
+app.get('/', (_req, res) => res.json({ success: true, message: 'AyuSethu API is running 🌿' }));
 
-// ── API Routes ───────────────────────────────────────
+// ── API Routes ────────────────────────────────────────────────────────────────
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/farmer', farmerRoutes);
 app.use('/api/v1/collector', collectorRoutes);
@@ -64,25 +66,17 @@ app.use('/api/v1/manufacturer', manufacturerRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1', consumerRoutes);
 
-// ── 404 handler ──────────────────────────────────────
-app.use((_req, res) => {
-  res.status(404).json({ success: false, error: 'Route not found' });
-});
-
-// ── Global error handler ─────────────────────────────
-// eslint-disable-next-line no-unused-vars
+// ── Error handlers ────────────────────────────────────────────────────────────
+app.use((_req, res) => res.status(404).json({ success: false, error: 'Route not found' }));
 app.use((err, _req, res, _next) => {
   console.error('💥 Error:', err.stack || err.message);
-  const statusCode = err.statusCode || 500;
-  res.status(statusCode).json({
-    success: false,
-    error: err.message || 'Internal Server Error',
-  });
+  res.status(err.statusCode || 500).json({ success: false, error: err.message || 'Internal Server Error' });
 });
 
-// ── Start server ─────────────────────────────────────
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
 const startServer = async () => {
   await connectDB();
+  startAuctionScheduler(io); // cron starts AFTER db is ready
   httpServer.listen(PORT, () => {
     console.log(`🚀 AyuSethu API & WebSockets running on http://localhost:${PORT}`);
   });

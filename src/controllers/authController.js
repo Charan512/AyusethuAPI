@@ -12,69 +12,73 @@ const signToken = (id) =>
  */
 export const register = async (req, res, next) => {
   try {
-    const { name, phone, email, password, role, farmSize, irrigationType, location } = req.body;
+    const { name, phone, email, password, role,
+      farmSize, irrigationType, location,
+      organizationName, productsManufactured } = req.body;
 
-    if (!name || !phone || !password || !role) {
-      return res.status(400).json({
-        success: false,
-        error: 'Please provide name, phone, password, and role',
+    const roleCaps = (role || '').toUpperCase();
+
+    // ── Manufacturer path (email + org, no phone required) ──
+    if (roleCaps === 'MANUFACTURER') {
+      if (!organizationName || !email || !password) {
+        return res.status(400).json({
+          success: false, error: 'Organization name, email, and password are required for Manufacturer registration.',
+        });
+      }
+      const existing = await User.findOne({ email: email.toLowerCase() });
+      if (existing) return res.status(409).json({ success: false, error: 'Email already registered.' });
+
+      const passwordHash = await bcrypt.hash(password, 12);
+      const products = Array.isArray(productsManufactured)
+        ? productsManufactured
+        : (productsManufactured || '').split(',').map(s => s.trim()).filter(Boolean);
+
+      const user = await User.create({
+        name: organizationName,
+        email: email.toLowerCase(),
+        passwordHash,
+        role: 'MANUFACTURER',
+        isActive: true,
+        manufacturerProfile: { organizationName, location: location || '', productsManufactured: products },
+      });
+
+      const token = signToken(user._id);
+      return res.status(201).json({
+        success: true,
+        data: {
+          token,
+          user: { id: user._id, name: user.name, email: user.email, role: user.role, manufacturerProfile: user.manufacturerProfile },
+        },
       });
     }
 
-    // Check for existing user
+    // ── Standard path (Farmer / Collector / Lab / Admin) ──
+    if (!name || !phone || !password || !role) {
+      return res.status(400).json({ success: false, error: 'Please provide name, phone, password, and role' });
+    }
     const existing = await User.findOne({
       $or: [{ phone }, { email: email ? email.toLowerCase() : 'INVALID_EMAIL_SKIP' }]
     });
-    if (existing) {
-      return res
-        .status(409)
-        .json({ success: false, error: 'Phone number or Email already registered' });
-    }
+    if (existing) return res.status(409).json({ success: false, error: 'Phone number or Email already registered' });
 
-    const salt = await bcrypt.genSalt(12);
-    const passwordHash = await bcrypt.hash(password, salt);
+    const passwordHash = await bcrypt.hash(password, 12);
+    const userPayload = { name, phone, email: email || undefined, passwordHash, role: roleCaps };
 
-    // Build user creation payload
-    const userPayload = {
-      name,
-      phone,
-      email: email || undefined,
-      passwordHash,
-      role: role.toUpperCase(),
-    };
-
-    // If FARMER, attach profile fields from registration form
-    if (role.toUpperCase() === 'FARMER' && (farmSize || irrigationType || location)) {
-      userPayload.farmerProfile = {
-        farmSize: farmSize || '',
-        location: location || '',
-        irrigationType: irrigationType || '',
-        soilType: '',
-        crops: [],
-      };
+    if (roleCaps === 'FARMER' && (farmSize || irrigationType || location)) {
+      userPayload.farmerProfile = { farmSize: farmSize || '', location: location || '', irrigationType: irrigationType || '', soilType: '', crops: [] };
     }
 
     const user = await User.create(userPayload);
-
     const token = signToken(user._id);
 
     res.status(201).json({
       success: true,
       data: {
         token,
-        user: {
-          id: user._id,
-          name: user.name,
-          phone: user.phone,
-          email: user.email,
-          role: user.role,
-          farmerProfile: user.farmerProfile || null,
-        },
+        user: { id: user._id, name: user.name, phone: user.phone, email: user.email, role: user.role, farmerProfile: user.farmerProfile || null },
       },
     });
-  } catch (error) {
-    next(error);
-  }
+  } catch (error) { next(error); }
 };
 
 /**

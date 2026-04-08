@@ -6,7 +6,6 @@ const labReportSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'CropBatch',
       required: [true, 'Crop Batch reference is required'],
-      unique: true,
     },
     labId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -65,13 +64,19 @@ const labReportSchema = new mongoose.Schema(
     finalDecision: {
       type: String,
       enum: ['PASS', 'FAIL'],
-      required: [true, 'Final decision is required'],
+      default: 'PASS',
     },
     rejectionReason: String,
+    labComments: String,
     technicianName: String,
+    // DRAFT — stores 'DRAFT' string; FINAL — stores actual IPFS CID
     pdfReportIpfsCid: {
       type: String,
-      required: [true, 'PDF report IPFS CID is required'],
+      default: 'DRAFT',
+    },
+    isDraft: {
+      type: Boolean,
+      default: false,
     },
   },
   { timestamps: true }

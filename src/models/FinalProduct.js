@@ -17,16 +17,39 @@ const finalProductSchema = new mongoose.Schema(
       ref: 'User',
       required: [true, 'Manufacturer ID is required'],
     },
+
+    // ── Product Declaration Fields ────────────────────
     productName: {
       type: String,
       required: [true, 'Product name is required'],
       trim: true,
     },
+    productType: {
+      type: String,
+      enum: ['Capsule', 'Powder', 'Oil', 'Raw', 'Tablet'],
+      required: [true, 'Product type is required'],
+    },
+    composition: {
+      type: String,
+      required: [true, 'Composition/Ingredients are required'],
+      trim: true,
+    },
+    marketPrice: {
+      type: Number,
+      required: [true, 'Market price is required'],
+      min: [0, 'Market price cannot be negative'],
+    },
+
+    // ── Traceability ──────────────────────────────────
     manufacturingDate: {
       type: Date,
-      required: [true, 'Manufacturing date is required'],
+      required: true,
     },
     qrCodeDataUri: {
+      type: String,
+      default: null,
+    },
+    verificationUrl: {
       type: String,
       default: null,
     },

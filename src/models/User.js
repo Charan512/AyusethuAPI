@@ -4,13 +4,12 @@ const userSchema = new mongoose.Schema(
   {
     name: {
       type: String,
-      required: [true, 'Name is required'],
       trim: true,
     },
     phone: {
       type: String,
-      required: [true, 'Phone number is required'],
       unique: true,
+      sparse: true,
       trim: true,
     },
     email: {
@@ -57,6 +56,12 @@ const userSchema = new mongoose.Schema(
       soilType: String,
       irrigationType: String,
       crops: [String],
+    },
+    manufacturerProfile: {
+      organizationName: String,
+      location: String,
+      productsManufactured: [String],
+      website: String,
     },
     isOnboardingComplete: {
       type: Boolean,

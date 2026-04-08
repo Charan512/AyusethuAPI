@@ -86,6 +86,19 @@ const cropBatchSchema = new mongoose.Schema(
       ],
       default: 'INITIATED',
     },
+    auctionEndsAt: {
+      type: Date,
+      default: null,
+    },
+    auctionWinnerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    startingPrice: {
+      type: Number,
+      default: 0,
+    },
   },
   { timestamps: true }
 );
