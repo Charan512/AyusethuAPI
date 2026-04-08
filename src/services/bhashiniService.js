@@ -69,7 +69,8 @@ export const bhashiniTts = async (text, targetLanguage) => {
         config: {
           language: { sourceLanguage: targetLanguage },
           serviceId: serviceId,
-          gender: "female"
+          gender: "female",
+          audioFormat: "mp3"
         }
       }],
       inputData: { input: [{ source: text }] }

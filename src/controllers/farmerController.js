@@ -425,3 +425,31 @@ export const getDashboard = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * POST /api/v1/farmer/tts
+ * On-demand TTS generation for text-initiated messages.
+ */
+export const generateTts = async (req, res, next) => {
+  try {
+    const { text } = req.body;
+    if (!text || !text.trim()) {
+      return res.status(400).json({ success: false, error: 'Text is required' });
+    }
+
+    const farmer = await User.findById(req.user._id).select('preferredLanguage');
+    if (!farmer) return res.status(404).json({ success: false, error: 'User not found' });
+
+    const lang = farmer.preferredLanguage || 'en';
+    const { bhashiniTts } = await import('../services/bhashiniService.js');
+    const audioBase64 = await bhashiniTts(text.trim(), lang);
+
+    res.status(200).json({
+      success: true,
+      data: { audioBase64 },
+    });
+  } catch (error) {
+    console.error('❌ On-demand TTS Error:', error.message);
+    next(error);
+  }
+};
