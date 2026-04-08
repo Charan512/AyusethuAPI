@@ -10,17 +10,18 @@ const BHASHINI_PIPELINE_URL = 'https://dhruva-api.bhashini.gov.in/services/infer
  */
 export const bhashiniAsr = async (audioBase64, sourceLanguage) => {
   try {
-    // ── NOTE: This is a realistic payload structure for Bhashini ASR ──
-    // In a fully live environment, you first fetch the compute URL from the config endpoint,
-    // but here we demonstrate the direct inference call structure.
-    
-    /*
     const response = await axios.post(
       BHASHINI_PIPELINE_URL,
       {
-        pipelineTasks: [{ taskType: 'asr' }],
-        inputData: { audio: [{ audioContent: audioBase64 }] },
-        config: { language: { sourceLanguage } }
+        pipelineTasks: [
+          {
+            taskType: 'asr',
+            config: {
+              language: { sourceLanguage }
+            }
+          }
+        ],
+        inputData: { audio: [{ audioContent: audioBase64 }] }
       },
       {
         headers: {
@@ -29,15 +30,14 @@ export const bhashiniAsr = async (audioBase64, sourceLanguage) => {
         }
       }
     );
-    return response.data.pipelineResponse[0].output[0].source;
-    */
 
-    // For testing/stub purposes without live compute callbacks:
-    console.log(`[Bhashini] Simulated ASR for language: ${sourceLanguage}`);
-    return 'Namaste, I am Raju. I have 3 acres of land.'; 
+    const asrOutput = response.data?.pipelineResponse?.[0]?.output?.[0]?.source;
+    if (!asrOutput) throw new Error("Invalid ASR payload returned");
+    
+    return asrOutput;
   } catch (error) {
-    console.error('❌ Bhashini ASR Error:', error.message);
-    throw new Error('Speech-to-Text conversion failed');
+    console.error('❌ Bhashini ASR Error:', error.response?.data || error.message);
+    throw new Error('Speech-to-Text conversion failed on Bhashini pipeline');
   }
 };
 
@@ -49,14 +49,18 @@ export const bhashiniAsr = async (audioBase64, sourceLanguage) => {
  */
 export const bhashiniTts = async (text, targetLanguage) => {
   try {
-    // ── NOTE: Realistic payload for Bhashini TTS ──
-    /*
     const response = await axios.post(
       BHASHINI_PIPELINE_URL,
       {
-        pipelineTasks: [{ taskType: 'tts' }],
-        inputData: { input: [{ source: text }] },
-        config: { language: { sourceLanguage: targetLanguage } }
+        pipelineTasks: [
+          {
+            taskType: 'tts',
+            config: {
+              language: { sourceLanguage: targetLanguage }
+            }
+          }
+        ],
+        inputData: { input: [{ source: text }] }
       },
       {
         headers: {
@@ -65,15 +69,13 @@ export const bhashiniTts = async (text, targetLanguage) => {
         }
       }
     );
-    return response.data.pipelineResponse[0].audio[0].audioContent;
-    */
 
-    // For testing/stub purposes:
-    console.log(`[Bhashini] Simulated TTS for language: ${targetLanguage}`);
-    // Dummy 1-second silent WAV in base64
-    return 'UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+    const audioOutput = response.data?.pipelineResponse?.[0]?.audio?.[0]?.audioContent;
+    if (!audioOutput) throw new Error("Invalid TTS payload returned");
+    
+    return audioOutput;
   } catch (error) {
-    console.error('❌ Bhashini TTS Error:', error.message);
-    throw new Error('Text-to-Speech conversion failed');
+    console.error('❌ Bhashini TTS Error:', error.response?.data || error.message);
+    throw new Error('Text-to-Speech conversion failed on Bhashini pipeline');
   }
 };
