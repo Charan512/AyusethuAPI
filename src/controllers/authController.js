@@ -12,7 +12,7 @@ const signToken = (id) =>
  */
 export const register = async (req, res, next) => {
   try {
-    const { name, phone, email, password, role } = req.body;
+    const { name, phone, email, password, role, farmSize, irrigationType, location } = req.body;
 
     if (!name || !phone || !password || !role) {
       return res.status(400).json({
@@ -34,13 +34,27 @@ export const register = async (req, res, next) => {
     const salt = await bcrypt.genSalt(12);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    const user = await User.create({
+    // Build user creation payload
+    const userPayload = {
       name,
       phone,
       email: email || undefined,
       passwordHash,
       role: role.toUpperCase(),
-    });
+    };
+
+    // If FARMER, attach profile fields from registration form
+    if (role.toUpperCase() === 'FARMER' && (farmSize || irrigationType || location)) {
+      userPayload.farmerProfile = {
+        farmSize: farmSize || '',
+        location: location || '',
+        irrigationType: irrigationType || '',
+        soilType: '',
+        crops: [],
+      };
+    }
+
+    const user = await User.create(userPayload);
 
     const token = signToken(user._id);
 
@@ -54,6 +68,7 @@ export const register = async (req, res, next) => {
           phone: user.phone,
           email: user.email,
           role: user.role,
+          farmerProfile: user.farmerProfile || null,
         },
       },
     });

@@ -14,7 +14,7 @@ export const upload = multer({ storage: multer.memoryStorage() });
  */
 export const chat = async (req, res, next) => {
   try {
-    const { message } = req.body;
+    const { message, isVoiceInitiated = false } = req.body;
 
     if (!message || !message.trim()) {
       return res.status(400).json({
@@ -113,6 +113,7 @@ export const chat = async (req, res, next) => {
     const responseData = {
       reply: aiResponse.replace(/\[DATA_CAPTURE_COMPLETE\][\s\S]*$/, '').trim(),
       isOnboardingComplete: farmer.isOnboardingComplete,
+      isVoiceInitiated: !!isVoiceInitiated,
     };
 
     if (onboardingData) {
@@ -121,6 +122,17 @@ export const chat = async (req, res, next) => {
 
     if (batchCreated) {
       responseData.batchCreated = batchCreated;
+    }
+
+    // If voice-initiated, auto-generate TTS for the response
+    if (isVoiceInitiated) {
+      try {
+        const { bhashiniTts } = await import('../services/bhashiniService.js');
+        const lang = farmer.preferredLanguage || 'en';
+        responseData.aiResponseAudio = await bhashiniTts(responseData.reply, lang);
+      } catch (ttsErr) {
+        console.error('⚠️ TTS generation skipped:', ttsErr.message);
+      }
     }
 
     res.status(200).json({
@@ -307,6 +319,108 @@ export const voiceChat = async (req, res, next) => {
     if (batchCreated) responseData.batchCreated = batchCreated;
 
     res.status(200).json({ success: true, data: responseData });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PUT /api/v1/farmer/profile/update
+ * Allows farmer to update all profile fields EXCEPT name.
+ */
+export const updateProfile = async (req, res, next) => {
+  try {
+    const { phone, email, farmSize, irrigationType, location, preferredLanguage } = req.body;
+
+    const farmer = await User.findById(req.user._id);
+    if (!farmer) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    // Update top-level fields (name is intentionally excluded)
+    if (phone) farmer.phone = phone;
+    if (email) farmer.email = email.toLowerCase();
+    if (preferredLanguage) farmer.preferredLanguage = preferredLanguage;
+
+    // Update farmerProfile sub-document
+    if (!farmer.farmerProfile) {
+      farmer.farmerProfile = { farmSize: '', location: '', soilType: '', irrigationType: '', crops: [] };
+    }
+    if (farmSize !== undefined) farmer.farmerProfile.farmSize = farmSize;
+    if (irrigationType !== undefined) farmer.farmerProfile.irrigationType = irrigationType;
+    if (location !== undefined) farmer.farmerProfile.location = location;
+
+    await farmer.save();
+
+    res.status(200).json({
+      success: true,
+      data: {
+        profile: {
+          name: farmer.name,
+          phone: farmer.phone,
+          email: farmer.email,
+          preferredLanguage: farmer.preferredLanguage,
+        },
+        farmerProfile: farmer.farmerProfile,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/v1/farmer/dashboard
+ * Returns analytics data for the farmer's dashboard.
+ * Combines real batch data with seeded monthly trends.
+ */
+export const getDashboard = async (req, res, next) => {
+  try {
+    const farmerId = req.user._id;
+
+    // Real data — batch counts by status
+    const batches = await CropBatch.find({ farmerId });
+    const statusCounts = {};
+    batches.forEach((b) => {
+      statusCounts[b.status] = (statusCounts[b.status] || 0) + 1;
+    });
+
+    // Total completed stages across all batches
+    let completedStages = 0;
+    batches.forEach((b) => {
+      b.stages.forEach((s) => {
+        if (s.status === 'COMPLETED') completedStages++;
+      });
+    });
+
+    // Seeded monthly activity (last 6 months)
+    const months = ['Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr'];
+    const monthlyData = months.map((m, i) => ({
+      month: m,
+      batchesCreated: Math.max(1, batches.length > 0 ? Math.floor(Math.random() * 5) + 1 : [2, 3, 1, 4, 2, 5][i]),
+      stagesCompleted: Math.max(1, Math.floor(Math.random() * 8) + 2),
+    }));
+
+    // Crop species distribution
+    const speciesCounts = {};
+    batches.forEach((b) => {
+      speciesCounts[b.speciesName] = (speciesCounts[b.speciesName] || 0) + 1;
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        summary: {
+          totalBatches: batches.length,
+          activeBatches: batches.filter((b) => !['SOLD', 'LAB_TESTED'].includes(b.status)).length,
+          completedStages,
+          harvestedBatches: batches.filter((b) => b.status === 'HARVESTED').length,
+        },
+        statusDistribution: statusCounts,
+        speciesDistribution: speciesCounts,
+        monthlyActivity: monthlyData,
+      },
+    });
   } catch (error) {
     next(error);
   }

@@ -39,7 +39,7 @@ The JSON must be valid and on a single line immediately after the marker. Do NOT
  */
 export const getChatResponse = async (history, newMessage, language = 'en') => {
   const model = genAI.getGenerativeModel({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-2.5-flash',
     systemInstruction: SYSTEM_INSTRUCTION,
   });
 
