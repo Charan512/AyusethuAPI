@@ -11,13 +11,15 @@ import Notification from '../models/Notification.js';
  */
 export const acceptBatch = async (req, res, next) => {
   try {
+    // Atomic FIFO claim — status must be IN_TRANSIT (Admin-released)
+    // findOneAndUpdate is atomic, preventing two labs racing to claim the same batch
     const batch = await CropBatch.findOneAndUpdate(
-      { status: 'HARVESTED' },
-      { $set: { status: 'LAB_ASSIGNED' } },
-      { new: true, sort: { createdAt: 1 } }
+      { status: 'IN_TRANSIT' },
+      { $set: { status: 'LAB_ASSIGNED', labId: req.user._id } },
+      { new: true, sort: { updatedAt: 1 } }  // oldest-released batch first (FIFO)
     );
-    if (!batch) return res.status(404).json({ success: false, error: 'No batches available for testing' });
-    res.status(200).json({ success: true, data: { batch, assignedLabId: req.user._id, message: 'Batch claimed successfully. Proceed with testing.' }});
+    if (!batch) return res.status(404).json({ success: false, error: 'No batches available. Another lab may have already claimed it.' });
+    res.status(200).json({ success: true, data: { batch, assignedLabId: req.user._id, message: 'Batch claimed! You are now assigned for testing.' }});
   } catch (error) { next(error); }
 };
 
@@ -130,15 +132,42 @@ export const submitResults = async (req, res, next) => {
     batch.status = 'LAB_TESTED';
     await batch.save();
 
-    // ── TRIGGER NOTIFICATION TO MANUFACTURER ──────────
-    const alertMsg = `A premium quality batch (${batchId}) successfully passed Lab Certification and is open for auction.`;
-    const notification = await Notification.create({
-      recipientRole: 'MANUFACTURER',
-      message: alertMsg,
-      batchId: batch._id
-    });
-    const io = req.app.get('io');
-    if (io) io.to('MANUFACTURER').emit('new_notification', notification);
+    // ── AUTO-AUCTION TRIGGER ───────────────────────────
+    // If the batch PASSED, automatically move it to IN_AUCTION
+    // and broadcast to all Manufacturers. Admin monitors, not triggers.
+    if (payload.finalDecision === 'PASS' || payload.finalDecision === 'APPROVED') {
+      batch.status = 'IN_AUCTION';
+      await batch.save();
+
+      // Compute starting price from quality metrics (mirrors admin grading algo)
+      let multiplier = 1.5; // base PASS bonus
+      const activeCompound = payload.phytochemical?.activeCompoundPercent || 0;
+      if (activeCompound > 80) multiplier += 0.4;
+      else if (activeCompound > 60) multiplier += 0.2;
+      const moisture = payload.physicochemical?.moisturePercent || 15;
+      if (moisture < 10) multiplier += 0.1;
+      const startingPrice = Math.round(5000 * multiplier);
+
+      const mfgMsg = `🏆 Batch ${batchId} (${batch.speciesName}) passed Lab Certification and is now LIVE in Auction. Starting price: ₹${startingPrice.toLocaleString('en-IN')}. Place your bids now!`;
+      const mfgNotification = await Notification.create({
+        recipientRole: 'MANUFACTURER',
+        message: mfgMsg,
+        batchId: batch._id
+      });
+      if (io) io.to('MANUFACTURER').emit('new_notification', mfgNotification);
+
+      // Also notify admin that auction went live automatically
+      const adminMsg = `Auto-auction triggered for Batch ${batchId} (${batch.speciesName}). Starting price ₹${startingPrice.toLocaleString('en-IN')} based on lab quality.`;
+      const adminNotification = await Notification.create({ recipientRole: 'ADMIN', message: adminMsg, batchId: batch._id });
+      if (io) io.to('ADMIN').emit('new_notification', adminNotification);
+
+    } else {
+      // FAIL — notify Admin for manual review
+      const failMsg = `⚠️ Batch ${batchId} FAILED lab testing. Requires Admin review before any further action.`;
+      const failNotification = await Notification.create({ recipientRole: 'ADMIN', message: failMsg, batchId: batch._id });
+      if (io) io.to('ADMIN').emit('new_notification', failNotification);
+    }
+
 
     res.status(201).json({
       success: true,

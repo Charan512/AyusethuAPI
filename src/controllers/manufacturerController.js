@@ -4,6 +4,26 @@ import AuctionBid from '../models/AuctionBid.js';
 import FinalProduct from '../models/FinalProduct.js';
 
 /**
+ * GET /api/v1/manufacturer/auctions
+ * Fetch all crop batches that are currently verified and IN_AUCTION.
+ */
+export const getAvailableAuctions = async (req, res, next) => {
+  try {
+    const batches = await CropBatch.find({ status: 'IN_AUCTION' })
+      .populate('farmerId', 'name')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: batches.length,
+      data: batches,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * POST /api/v1/manufacturer/bid
  * Submit a bid on an IN_AUCTION batch.
  */

@@ -41,6 +41,11 @@ const cropBatchSchema = new mongoose.Schema(
       ref: 'User',
       default: null,
     },
+    labId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
     speciesName: {
       type: String,
       required: [true, 'Species name is required'],

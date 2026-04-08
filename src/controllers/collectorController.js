@@ -241,17 +241,19 @@ export const finalVerification = async (req, res, next) => {
     batch.status = 'HARVESTED';
     await batch.save();
 
-    // ── TRIGGER NOTIFICATION TO LAB ──────────────────
-    const alertMsg = `New Batch ${batchId} harvested and species verified. Ready for lab testing.`;
+    // ── TRIGGER NOTIFICATION TO ADMIN (not Lab directly) ──
+    // Admin must review and release to the Lab queue.
+    const alertMsg = `Batch ${batchId} (${batch.speciesName}) has been harvested and ML-verified by the Collector. Awaiting your approval to release for Lab testing.`;
     const notification = await Notification.create({
-      recipientRole: 'LAB',
+      recipientRole: 'ADMIN',
       message: alertMsg,
       batchId: batch._id
     });
     const io = req.app.get('io');
     if (io) {
-      io.to('LAB').emit('new_notification', notification);
+      io.to('ADMIN').emit('new_notification', notification);
     }
+
 
 
     res.status(200).json({
@@ -293,3 +295,54 @@ export const getMyBatches = async (req, res, next) => {
   }
 };
 
+/**
+ * GET /api/v1/collector/farmers
+ * Returns all farmers with active crop batches (full dashboard feed).
+ */
+export const getActiveFarmers = async (req, res, next) => {
+  try {
+    const batches = await CropBatch.find({
+      status: { $nin: ['SOLD', 'IN_AUCTION'] },
+    })
+      .populate('farmerId', 'name phone email farmerProfile')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({ success: true, data: batches });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/v1/collector/inventory
+ * Returns HARVESTED batches waiting in godown for lab testing.
+ */
+export const getInventory = async (req, res, next) => {
+  try {
+    const batches = await CropBatch.find({
+      status: { $in: ['HARVESTED', 'IN_TRANSIT'] },
+    })
+      .populate('farmerId', 'name phone farmerProfile')
+      .sort({ updatedAt: -1 });
+
+    res.status(200).json({ success: true, count: batches.length, data: batches });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/v1/collector/batch/:batchId
+ * Returns a single batch with full farmer details.
+ */
+export const getBatchDetail = async (req, res, next) => {
+  try {
+    const { batchId } = req.params;
+    const batch = await CropBatch.findOne({ batchId })
+      .populate('farmerId', 'name phone email farmerProfile');
+    if (!batch) return res.status(404).json({ success: false, error: 'Batch not found' });
+    res.status(200).json({ success: true, data: batch });
+  } catch (error) {
+    next(error);
+  }
+};
