@@ -34,7 +34,8 @@ export const chat = async (req, res, next) => {
     let aiResponse;
 
     try {
-      aiResponse = await getChatResponse(history, message.trim());
+      const lang = farmer.preferredLanguage || 'en';
+      aiResponse = await getChatResponse(history, message.trim(), lang);
     } catch (aiError) {
       console.error('❌ Gemini API error:', aiError.message);
       return res.status(502).json({
