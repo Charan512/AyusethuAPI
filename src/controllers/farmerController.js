@@ -67,6 +67,9 @@ export const chat = async (req, res, next) => {
             farmer.farmerProfile = farmer.farmerProfile || {};
             farmer.farmerProfile.crops = onboardingData.crops;
           }
+          if (onboardingData.preferredLanguage) {
+            farmer.preferredLanguage = onboardingData.preferredLanguage;
+          }
           farmer.isOnboardingComplete = true;
 
           // Auto-initialize Stage 1 batch for primary crop
