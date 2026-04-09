@@ -4,6 +4,7 @@ import multer from 'multer';
 import { getChatResponse } from '../services/geminiService.js';
 import { bhashiniAsr, bhashiniTts } from '../services/bhashiniService.js';
 import axios from 'axios';
+import FormData from 'form-data';
 
 // ── Multer — store audio format in memory buffer ──────
 export const upload = multer({ storage: multer.memoryStorage() });
@@ -347,6 +348,21 @@ export const voiceChat = async (req, res, next) => {
 };
 
 /**
+ * GET /api/v1/farmer/batches
+ * Returns all crop batches belonging to the logged-in farmer.
+ */
+export const getMyBatches = async (req, res, next) => {
+  try {
+    const batches = await CropBatch.find({ farmerId: req.user._id })
+      .sort({ createdAt: -1 })
+      .select('batchId speciesName status stages createdAt cultivationDetails');
+    res.status(200).json({ success: true, data: batches });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * PUT /api/v1/farmer/profile/update
  * Allows farmer to update all profile fields EXCEPT name.
  */
@@ -492,6 +508,91 @@ export const generateTts = async (req, res, next) => {
     });
   } catch (error) {
     console.error('❌ On-demand TTS Error:', error.message);
+    next(error);
+  }
+};
+
+/**
+ * Helper: Pin a file buffer to IPFS via Pinata
+ */
+const pinToPinata = async (fileBuffer, filename) => {
+  const form = new FormData();
+  form.append('file', fileBuffer, { filename });
+  const metadata = JSON.stringify({ name: `AyuSethu-${filename}` });
+  form.append('pinataMetadata', metadata);
+  const response = await axios.post(
+    'https://api.pinata.cloud/pinning/pinFileToIPFS',
+    form,
+    {
+      maxBodyLength: Infinity,
+      headers: {
+        ...form.getHeaders(),
+        pinata_api_key: process.env.PINATA_API_KEY,
+        pinata_secret_api_key: process.env.PINATA_SECRET_KEY,
+      },
+    }
+  );
+  return response.data.IpfsHash;
+};
+
+/**
+ * POST /api/v1/farmer/batch/:batchId/stage/:stageNumber
+ * Allows farmer to upload stage progress photo with geo-tag directly from mobile device.
+ */
+export const completeStage = async (req, res, next) => {
+  try {
+    const { batchId, stageNumber } = req.params;
+    const { lat, lng } = req.body;
+    const stageNum = parseInt(stageNumber, 10);
+
+    if (stageNum < 2 || stageNum > 5) {
+      return res.status(400).json({ success: false, error: 'Cannot manually override stage 1.' });
+    }
+
+    const batch = await CropBatch.findOne({ batchId, farmerId: req.user._id });
+    if (!batch) {
+      return res.status(404).json({ success: false, error: 'Crop batch not found or unauthorized' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'A photo is required for stage completion' });
+    }
+
+    let photoCid;
+    try {
+      photoCid = await pinToPinata(req.file.buffer, `stage${stageNum}-${batchId}.jpg`);
+    } catch (pinErr) {
+      return res.status(502).json({ success: false, error: 'IPFS upload failed' });
+    }
+
+    // Upsert the stage in the array
+    const existingIndex = batch.stages.findIndex((s) => s.stageNumber === stageNum);
+    const stageData = {
+      stageNumber: stageNum,
+      status: 'COMPLETED',
+      completedAt: new Date(),
+      geoTag: { lat: parseFloat(lat) || 0, lng: parseFloat(lng) || 0 },
+      photoIpfsCid: photoCid,
+    };
+
+    if (existingIndex > -1) {
+      batch.stages[existingIndex] = stageData;
+    } else {
+      batch.stages.push(stageData);
+    }
+    
+    // Auto-advance batch status if hitting stage 5
+    if (stageNum === 5 && batch.status === 'INITIATED') {
+      batch.status = 'GROWING'; // Or whatever intermediate status makes sense before harvest/ML check
+    }
+
+    await batch.save();
+    
+    res.status(200).json({
+      success: true,
+      data: batch,
+    });
+  } catch (error) {
     next(error);
   }
 };
