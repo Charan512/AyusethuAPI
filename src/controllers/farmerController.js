@@ -217,7 +217,6 @@ export { chat as handleChat };
  */
 export const voiceChat = async (req, res, next) => {
   try {
-    const { sourceLanguage = 'en' } = req.body;
     let audioBase64 = '';
 
     if (req.file) {
@@ -230,6 +229,9 @@ export const voiceChat = async (req, res, next) => {
 
     const farmer = await User.findById(req.user._id);
     if (!farmer) return res.status(404).json({ success: false, error: 'User not found' });
+
+    // Strictly synchronize voice/translation languages with backend ML profile
+    const sourceLanguage = farmer.preferredLanguage || 'en';
 
     // 1. Import Bhashini helpers lazily to avoid module issues
     const { bhashiniAsr, bhashiniTts } = await import('../services/bhashiniService.js');
