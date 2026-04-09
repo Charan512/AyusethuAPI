@@ -53,8 +53,8 @@ export const getChatResponse = async (history, newMessage, language = 'en') => {
     });
   }
 
-  // Force Groq to reply entirely in the required language
-  const languagePrompt = `\n\n[SYSTEM INSTRUCTION: You MUST reply entirely in the language corresponding to language code '${language}'.]`;
+  // Softly enforce language but allow organic mid-chat switching
+  const languagePrompt = `\n\n[SYSTEM INSTRUCTION: Your default language is '${language}'. However, if the user explicitly asks you to speak in a different language, or naturally switches the conversation language, you MUST dynamically match their new language preference without arguing.]`;
   messages.push({
     role: 'user',
     content: newMessage + languagePrompt,
