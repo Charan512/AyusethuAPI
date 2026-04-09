@@ -9,6 +9,23 @@ import axios from 'axios';
 export const upload = multer({ storage: multer.memoryStorage() });
 
 /**
+ * Robustly detects true localized language code directly from Unicode alphabet ranges.
+ * Acts as an unbreakable TTS fallback if user db profiles drift.
+ */
+function detectTextLanguage(text) {
+  if (/[\u0C00-\u0C7F]/.test(text)) return 'te';
+  if (/[\u0900-\u097F]/.test(text)) return 'hi';
+  if (/[\u0B80-\u0BFF]/.test(text)) return 'ta';
+  if (/[\u0C80-\u0CFF]/.test(text)) return 'kn';
+  if (/[\u0D00-\u0D7F]/.test(text)) return 'ml';
+  if (/[\u0980-\u09FF]/.test(text)) return 'bn';
+  if (/[\u0A80-\u0AFF]/.test(text)) return 'gu';
+  if (/[\u0B00-\u0B7F]/.test(text)) return 'or';
+  if (/[\u0A00-\u0A7F]/.test(text)) return 'pa';
+  return 'en';
+}
+
+/**
  * POST /api/v1/farmer/chat
  * Multi-turn Gemini chatbot for farmer onboarding and assistance.
  * Persists chat history in MongoDB. Auto-triggers onboarding on data capture.
@@ -129,8 +146,8 @@ export const chat = async (req, res, next) => {
     if (isVoiceInitiated) {
       try {
         const { bhashiniTts } = await import('../services/bhashiniService.js');
-        const lang = farmer.preferredLanguage || 'en';
-        responseData.aiResponseAudio = await bhashiniTts(responseData.reply, lang);
+        const trueLang = detectTextLanguage(responseData.reply);
+        responseData.aiResponseAudio = await bhashiniTts(responseData.reply, trueLang);
       } catch (ttsErr) {
         console.error('⚠️ TTS generation skipped:', ttsErr.message);
       }
@@ -307,7 +324,8 @@ export const voiceChat = async (req, res, next) => {
     // 6. TTS - Text to Speech
     let aiResponseAudio = null;
     try {
-      aiResponseAudio = await bhashiniTts(cleanAiResponse, sourceLanguage);
+      const trueLang = detectTextLanguage(cleanAiResponse);
+      aiResponseAudio = await bhashiniTts(cleanAiResponse, trueLang);
     } catch (ttsError) {
       console.error('⚠️ TTS Warning:', ttsError.message);
     }
