@@ -44,7 +44,7 @@ export const getBatchTimeline = async (req, res, next) => {
 
     // ── Fetch lab report ──────────────────────────────────────────────────────
     const labReport = batch
-      ? await LabReport.findOne({ cropBatchId: batch._id, isDraft: false })
+      ? await LabReport.findOne({ cropBatchId: batch._id, isDraft: { $ne: true } })
       : null;
 
     // ── Node 1: Farm Origin ──────────────────────────────────────────────────
