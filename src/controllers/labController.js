@@ -25,8 +25,10 @@ export const getAvailableSamples = async (req, res, next) => {
 export const getMyAssignedBatch = async (req, res, next) => {
   try {
     const batches = await CropBatch.find({
-      status: { $in: ['LAB_ASSIGNED', 'LAB_TESTED', 'IN_AUCTION', 'SOLD'] },
-      labId: req.user._id,
+      $or: [
+        { status: 'LAB_ASSIGNED', labId: req.user._id }, // Keep active assignments private
+        { status: { $in: ['LAB_TESTED', 'IN_AUCTION', 'SOLD'] } } // Make history global for prototype
+      ]
     })
       .populate('farmerId', 'name phone farmerProfile')
       .sort({ updatedAt: -1 });
