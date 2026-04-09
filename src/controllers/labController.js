@@ -25,7 +25,7 @@ export const getAvailableSamples = async (req, res, next) => {
 export const getMyAssignedBatch = async (req, res, next) => {
   try {
     const batches = await CropBatch.find({
-      status: { $in: ['LAB_ASSIGNED', 'LAB_TESTED'] },
+      status: { $in: ['LAB_ASSIGNED', 'LAB_TESTED', 'IN_AUCTION', 'SOLD'] },
       labId: req.user._id,
     })
       .populate('farmerId', 'name phone farmerProfile')
