@@ -177,7 +177,13 @@ export const getChatHistory = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: {
-        chatHistory: farmer.chatHistory,
+        chatHistory: farmer.chatHistory.map((msg) => {
+          const raw = msg.toObject ? msg.toObject() : msg;
+          if (raw.role === 'model' && raw.parts && raw.parts.length > 0) {
+            raw.parts[0].text = raw.parts[0].text.replace(/\[DATA_CAPTURE_COMPLETE\][\s\S]*$/, '').trim();
+          }
+          return raw;
+        }),
         isOnboardingComplete: farmer.isOnboardingComplete,
         farmerProfile: farmer.farmerProfile || null,
       },
