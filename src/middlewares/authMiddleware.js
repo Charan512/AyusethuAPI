@@ -52,6 +52,11 @@ export const protect = async (req, res, next) => {
  */
 export const authorize = (...roles) => {
   return (req, res, next) => {
+    // ADMIN has universal access to read cross-role dashboard views
+    if (req.user.role === 'ADMIN') {
+      return next();
+    }
+    
     if (!roles.includes(req.user.role)) {
       return res.status(403).json({
         success: false,
